@@ -1,0 +1,35 @@
+---
+title: "Book Series Rating Investigation"
+output: html_document
+---
+  
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(readxl)
+library(tidyverse)
+library(dplyr)
+
+series <- read_excel("SeriesDataset.xlsx")
+
+standalones <- read_excel("StandaloneDataset.xlsx")
+```
+
+# Initial data exploration
+
+```{r}
+summary(series)
+```
+Number of books: $247$
+Number of series: $56$
+Average series rating: $4.119$
+Average number of ratings: $807580$
+
+```{r}
+summary(standalones)
+```
+Number of books: $202$
+Average standalone rating: $4.010$
+Average number of ratings: $731664$
