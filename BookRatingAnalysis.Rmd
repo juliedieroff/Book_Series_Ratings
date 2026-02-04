@@ -7,7 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, message=FALSE, warning=FALSE}
+```{r,include=FALSE, message=FALSE, warning=FALSE}
 library(readxl)
 library(ggplot2)
 library(tidyverse)
@@ -21,22 +21,80 @@ series <- read_excel("SeriesDataset.xlsx")
 standalones <- read_excel("StandaloneDataset.xlsx")
 ```
 
+# Introduction
+
+I am a huge bookworm and use Goodreads to rate and record the books that I've read. Something I noticed was that the ratings of books in a series often increased as the series progressed. Oftentimes the ratings of books later in a series were much higher than what I think of as a typical rating. I wanted to know if this was an actual pattern that occurred or something I really only noticed a few times but stuck out to me.
+
+I searched through Goodreads' lists of popular books in the genres Fantasy, Mystery, Romance and YA as many famous series fall into at least one of these categories. I recorded the ratings and other details about $596$ books in series and standalones. These datasets are in this repository and you are welcome to use them if you would like. 
+Some caveats about my data collection are:
+
+- These rating change overtime and I just recorded the rating at one point in time.
+- Many books fall into more than one genre.
+- These books are some of the most popular (not all) and more data points and more variety would help the accuracy of this analysis.
+
+This data analysis is simply because I was curious, so the limitations it inherently has due to my data collection are ones I can live with. Please forgive my lack of rigor.
+
 # Initial data exploration
+
+This section displays some basic features of the datasets we examine here. For example, the average rating of books in series compared to standalones and the proportion of books or series in each genre.
 
 ```{r}
 summary(series)
 ```
-Number of books: $394$
-Number of series: $90$
-Average series rating: $4.075$
-Average number of ratings: $603374$
+- Number of books: $394$
+- Number of series: $90$
+- Average series rating: $4.075$
+- Average number of ratings: $603374$
 
 ```{r}
 summary(standalones)
 ```
-Number of books: $202$
-Average standalone rating: $4.010$
-Average number of ratings: $731664$
+- Number of books: $202$
+- Average standalone rating: $4.010$
+- Average number of ratings: $731664$
+
+```{r}
+# Count books in each genre for series and standalones
+series_counts <- series %>%
+  group_by(genre) %>%
+  summarise(count = n()) %>%
+  mutate(type = "Series")
+
+standalone_counts <- standalones %>%
+  group_by(genre) %>%
+  summarise(count = n()) %>%
+  mutate(type = "Standalones")
+
+book_counts <- bind_rows(series_counts, standalone_counts)
+
+# Create graph
+ggplot(book_counts, aes(x = genre, y = count, fill = type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = -0.5) +
+  labs(title = "Number of Books by Genre: Series vs Standalones",
+       x = "Genre",
+       y = "Number of Books",
+       fill = "Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Series" = "#EB9EC8", "Standalones" = "#841B55"))
+```
+
+```{r}
+# Count number of series in each genre
+series_per_genre <- series %>%
+  group_by(genre) %>%
+  summarise(n_series = n_distinct(series_id))
+
+# Create graph
+ggplot(series_per_genre, aes(x = genre, y = n_series)) +
+  geom_bar(stat = "identity", fill = "#841B55") +
+  geom_text(aes(label = n_series), vjust = -0.5) +
+  labs(title = "Number of Series by Genre",
+       x = "Genre",
+       y = "Number of Series") +
+  theme_minimal()
+```
+
 
 ```{r}
 # Calculate average ratings for series by genre
@@ -70,11 +128,18 @@ comparison_table_rounded %>%
   column_spec(2:5, width = "3cm")
 ```
 
+From this exploration we can see that the overall average rating of books in series and standalones are very similar, with books in series being slightly higher. The graphs showing the frequency of books and series in each genre shows that there is some variety in the number of books and series in each genre. However, this should not have a large effect on the results as the ranges are not wide: $79-112$, $43-63$, $20-27$.
+
+Interestingly, we can already see that the average rating of books in series compared to standalones differs across the genres. For YA and Romance there is very little or no difference between the average ratings and there is only a slight difference for Mystery ($0.08$). Comparatively, there is a big difference between the average rating of books in series versus standalones in the Fantasy genre. The difference is $0.23$.
+
+
 # Rating of books within a series
 
 ### What proportion of series have books with non-decreasing ratings as the series progresses?
 
-```{r}
+We now look at how many series meet the strict requirement that as the series progresses the average rating of the books increases or remains the same.
+
+```{r, warning=FALSE}
 # Function to check if a series has non-decreasing ratings
 check_non_decreasing <- function(data) {
   # Sort by series number to ensure correct order
@@ -129,6 +194,10 @@ genre_increasing_rounded %>%
   row_spec(nrow(genre_increasing_rounded), bold = TRUE, background = "#EB9EC8")
 ```
 
+For the genres YA and Mystery relatively few series maintain consistently non-decreasing ratings across all books. In contrast, for Romance and Fantasy series, at least a third meet this criteria. This is a notable proportion, as maintaining or improving reader satisfaction with each successive book in a series sounds challenging to achieve in practice (in my opinion).
+
+Next, we will look at the ratings across series without a strict rule.
+
 ### What is the general trend for book ratings across a series by genre?
 
 ```{r}
@@ -159,6 +228,12 @@ for (genre_name in genres) {
 }
 ```
 
+The graphs of the book ratings in each series for every genre include a line of best fit (the black line) which is a straight line that shows the overall trend or pattern. It doesn't necessarily go through every point, but it minimizes the total distance from all the points giving us a summary of the general direction the data is heading. The shaded area around the lines of best fit represent our uncertainty about where the true trend line lies. A wider area means we're less certain about the exact trend, while a narrower band means we're more confident in our estimate. In this case it is very related to the number books in the dataset that are a given number in a series. The higher the book number the less certain we are since there are fewer other books at this point to compare it to.
+
+From the lines of best fit we can see that there is basically no relationship between how far into the series a book is and its rating within the YA and Mystery genres. Interestingly, the line of best fit on the Romance and Fantasy graphs are clearly increasing as the series progresses. This is further supported by our finding that at least a third of the series in these genres have non-decreasing ratings.
+
+The table below displays the exact slopes of these lines of best fit. These are the coefficients in the linear regression model used to create the lines. Although the coefficients for the lines on the YA and Mystery graphs are very small, they are still positive. I would interpret these values of $0.0458$ and $0.0059$ as meaning that there is likely no relationship between where a book lies in a series and its rating in this genre but there is definitely not a negative relationship. The slopes for the lines of best fit for Romance and Fantasy are $0.0458$ and $0.0466$ respectively. These are not particularly large coefficients either but the range of ratings within these genres are $3.38-4.76$ which is not wide. So these slopes indicate that there is a positive relationship between where a book lies in a series and its rating, in these genres.
+
 ```{r}
 # Calculate slope for each genre
 genre_slopes <- series %>%
@@ -181,4 +256,61 @@ genre_slopes %>%
   column_spec(2:3, width = "3cm")
 ```
 
+### Are later books in a series rated higher?
 
+```{r}
+# Calculate midpoint for each series
+series_later_books <- series %>%
+  group_by(series_id) %>%
+  mutate(
+    max_book = max(series_no),
+    midpoint = max_book / 2,
+    is_later_book = series_no > midpoint
+  ) %>%
+  ungroup() %>%
+  filter(is_later_book == TRUE)
+
+# Calculate average ratings by genre
+later_books_avg <- series_later_books %>%
+  group_by(genre) %>%
+  summarise(
+    avg_rating_later_books = mean(rating, na.rm = TRUE),
+    n_later_books = n()
+  )
+
+standalone_avg <- standalones %>%
+  group_by(genre) %>%
+  summarise(
+    avg_rating_standalones = mean(rating, na.rm = TRUE),
+    n_standalones = n()
+  )
+
+# Combine
+comparison <- left_join(later_books_avg, standalone_avg, by = "genre") %>%
+  mutate(
+    difference = avg_rating_later_books - avg_rating_standalones,
+    avg_rating_later_books = round(avg_rating_later_books, 3),
+    avg_rating_standalones = round(avg_rating_standalones, 3),
+    difference = round(difference, 3)
+  )
+
+comparison %>%
+  kable(caption = "Average Ratings: Books Later in Series vs Standalones by Genre",
+        col.names = c("Genre", "Later Books Avg", "# Later Books", "Standalones Avg", "# Standalones", "Difference"),
+        align = 'c') %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"),
+                full_width = FALSE,
+                position = "center") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "3cm") %>%
+  column_spec(2:6, width = "3cm")
+```
+
+From the table above we can see that the difference in the way standalone books are rated compared to books in the second half of a series is notable for books in the Fantasy genre and small for the Romance and Mystery genres, but in these genres the books in series have a higher average. The opposite is true for YA series. There is a small negative difference in how the series books are rated compared to standalones.
+
+# Conclusion
+
+This data analysis showed that the trends in how books in series are rated depends on the genre. Fantasy and Romance series generally do appear to have ratings that increase over the course of the series while this is not the case for YA and Mystery novels. When we compare the ratings of books in the second half of a series to standalones in the same genre we see that the later books in a Fantasy series are rated much higher than their standalone counterparts. 
+
+These trends may be due to the fact that once a person reads the first book in a series they are less likely to read the subsequent books if they did not like it. Note that the number of ratings for books in a series almost always decreases as it progresses. Conversely, if someone loved the first book in a series they may judge the later ones harsher than normal if they didn't meet their expectations.
+
+Overall, what I find the most interesting is that the two genres where book ratings do appear to increase over the course of a series are the two genres I read most! No wonder I was convinced this happened all the time. I would love to know if any other genres display this pattern and if there are other weird book patterns I can find in the future!
