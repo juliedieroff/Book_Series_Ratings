@@ -9,8 +9,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, message=FALSE, warning=FALSE}
 library(readxl)
+library(ggplot2)
 library(tidyverse)
 library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
 
 series <- read_excel("SeriesDataset.xlsx")
 
@@ -22,10 +26,10 @@ standalones <- read_excel("StandaloneDataset.xlsx")
 ```{r}
 summary(series)
 ```
-Number of books: $247$
-Number of series: $56$
-Average series rating: $4.119$
-Average number of ratings: $807580$
+Number of books: $394$
+Number of series: $90$
+Average series rating: $4.075$
+Average number of ratings: $603374$
 
 ```{r}
 summary(standalones)
@@ -33,3 +37,148 @@ summary(standalones)
 Number of books: $202$
 Average standalone rating: $4.010$
 Average number of ratings: $731664$
+
+```{r}
+# Calculate average ratings for series by genre
+series_means <- series %>%
+  group_by(genre) %>%
+  summarise(mean_rating = mean(rating, na.rm = TRUE)) %>%
+  mutate(type = "Series")
+
+# Calculate average ratings for standalones by genre
+standalone_means <- standalones %>%
+  group_by(genre) %>%
+  summarise(mean_rating = mean(rating, na.rm = TRUE)) %>%
+  mutate(type = "Standalones")
+
+# Combine and reshape into a table
+comparison_table <- bind_rows(series_means, standalone_means) %>%
+  pivot_wider(names_from = genre, values_from = mean_rating) %>%
+  select(type, everything())
+
+# Round average ratings
+comparison_table_rounded <- comparison_table %>%
+  mutate(across(where(is.numeric), ~round(., 2)))
+
+comparison_table_rounded %>%
+  kable(caption = "Mean Ratings: Series vs Standalones by Genre",
+        align = 'c') %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"),
+                full_width = FALSE,
+                position = "center") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "3cm") %>%
+  column_spec(2:5, width = "3cm")
+```
+
+# Rating of books within a series
+
+### What proportion of series have books with non-decreasing ratings as the series progresses?
+
+```{r}
+# Function to check if a series has non-decreasing ratings
+check_non_decreasing <- function(data) {
+  # Sort by series number to ensure correct order
+  data <- data %>% arrange(series_no)
+  
+  # Check if each rating is greater than or equal to the previous one
+  ratings <- data$rating
+  is_non_decreasing <- all(diff(ratings) >= 0)
+  
+  return(is_non_decreasing)
+}
+
+# Calculate by genre
+genre_increasing <- series %>%
+  group_by(genre, series_id) %>%
+  summarise(is_increasing = check_non_decreasing(cur_data()), .groups = 'drop') %>%
+  group_by(genre) %>%
+  summarise(
+    total_series = n(),
+    increasing_series = sum(is_increasing, na.rm = TRUE),
+    proportion_increasing = mean(is_increasing, na.rm = TRUE)
+  )
+
+# Calculate overall totals
+overall_row <- series %>%
+  group_by(series_id) %>%
+  summarise(is_increasing = check_non_decreasing(cur_data()), .groups = 'drop') %>%
+  summarise(
+    genre = "Overall",
+    total_series = n(),
+    increasing_series = sum(is_increasing, na.rm = TRUE),
+    proportion_increasing = mean(is_increasing, na.rm = TRUE)
+  )
+
+# Combine genre data with overall row
+genre_increasing_with_total <- bind_rows(genre_increasing, overall_row)
+
+# Round for display
+genre_increasing_rounded <- genre_increasing_with_total %>%
+  mutate(proportion_increasing = round(proportion_increasing, 3))
+
+# Create table
+genre_increasing_rounded %>%
+  kable(caption = "Proportion of Series with Non-Decreasing Ratings by Genre",
+        col.names = c("Genre", "Total Series", "Increasing Series", "Proportion"),
+        align = 'c') %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"),
+                full_width = FALSE,
+                position = "center") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "3cm") %>%
+  column_spec(2:4, width = "3cm") %>%
+  row_spec(nrow(genre_increasing_rounded), bold = TRUE, background = "#EB9EC8")
+```
+
+### What is the general trend for book ratings across a series by genre?
+
+```{r}
+# Create a plot for each genre
+genres <- unique(series$genre)
+
+for (genre_name in genres) {
+  # Filter data for the current genre
+  genre_data <- series %>% 
+    filter(genre == genre_name)
+  
+  # Create the plot
+  p <- ggplot(genre_data, aes(x = series_no, y = rating, group = series_id)) +
+    geom_line(aes(color = factor(series_id)), alpha = 1, linewidth = 0.7) +
+    geom_point(aes(color = factor(series_id)), size = 0.7) +
+    geom_smooth(aes(group = 1), method = "lm", se = TRUE, color = "black", linewidth = 1.2) + 
+    scale_x_continuous(breaks = 1:13) + 
+    labs(
+      title = paste(genre_name, "Series: Book Ratings Within a Series"),
+      x = "Book Number in Series",
+      y = "Average Rating",
+      color = "Series"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  print(p)
+}
+```
+
+```{r}
+# Calculate slope for each genre
+genre_slopes <- series %>%
+  group_by(genre) %>%
+  summarise(
+    slope = coef(lm(rating ~ series_no))[2],
+    n_books = n()
+  ) %>%
+  mutate(slope = round(slope, 4))
+
+# Create table
+genre_slopes %>%
+  kable(caption = "Linear Regression Coefficients: Rating vs Series Number by Genre",
+        col.names = c("Genre", "Slope (Coefficient)", "Number of Books"),
+        align = 'c') %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"),
+                full_width = FALSE,
+                position = "center") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "3cm") %>%
+  column_spec(2:3, width = "3cm")
+```
+
+
